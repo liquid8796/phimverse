@@ -25,4 +25,6 @@ architecture and SETUP.md for infrastructure config.
 - Commits follow `type(scope): message` and bump the package version.
 - After every patch commit, push to `origin/master` immediately (user rule).
   If the push is rejected, fetch/rebase and report — never force-push.
+- After pushing, deploy to Vercel production: `vercel deploy --prod --yes`
+  (user rule). Report the deployment URL; if the build fails, fix and redeploy.
 - Verify with `npm run lint && npm run typecheck && npm run build` before committing.
