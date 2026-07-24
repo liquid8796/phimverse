@@ -109,10 +109,30 @@ Env cần đặt: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_REFRESH_TOKEN`.
 
 1. **API permissions** → Add → Microsoft Graph → **Application** → `Files.Read.All` → bấm **Grant admin consent**.
 2. Lấy **Directory (tenant) ID** → `MS_TENANT_ID`.
-3. Lấy drive id:
+3. Lấy access token tạm (hạn ~1 giờ, chỉ cần cho bước 4 — khi chạy thật app tự xin
+   token bằng đúng flow này, xem `src/server/onedrive/client.ts`):
+
+```powershell
+# PowerShell — thay MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET của bạn
+$token = (Invoke-RestMethod -Method POST `
+  -Uri "https://login.microsoftonline.com/MS_TENANT_ID/oauth2/v2.0/token" `
+  -Body @{ client_id = "MS_CLIENT_ID"; client_secret = "MS_CLIENT_SECRET";
+           grant_type = "client_credentials"; scope = "https://graph.microsoft.com/.default" }
+).access_token
+```
 
 ```bash
-curl -H "Authorization: Bearer ACCESS_TOKEN" "https://graph.microsoft.com/v1.0/users/EMAIL_CUA_BAN/drive?select=id"
+# hoặc bash/curl
+curl -X POST "https://login.microsoftonline.com/MS_TENANT_ID/oauth2/v2.0/token" \
+  -d "client_id=MS_CLIENT_ID&client_secret=MS_CLIENT_SECRET&grant_type=client_credentials&scope=https://graph.microsoft.com/.default"
+# → copy trường "access_token" trong JSON trả về
+```
+
+4. Lấy drive id → `ONEDRIVE_DRIVE_ID`:
+
+```powershell
+(Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/users/EMAIL_CUA_BAN/drive?select=id" `
+  -Headers @{ Authorization = "Bearer $token" }).id
 ```
 
 Env cần đặt: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`, `ONEDRIVE_DRIVE_ID`.
