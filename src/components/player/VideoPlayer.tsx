@@ -79,6 +79,64 @@ export function VideoPlayer({
   const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const [resolution, setResolution] = useState<string | null>(null);
   const [available, setAvailable] = useState<EpisodeSource[]>([]);
+  const [pipSupported, setPipSupported] = useState(false);
+  const [pipActive, setPipActive] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Transient toast inside the player (e.g. why PiP was refused). */
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 3200);
+  }, []);
+
+  // Feature-detect PiP once mounted; hide the button where unsupported (Firefox).
+  useEffect(() => {
+    const video = videoRef.current;
+    setPipSupported(
+      "pictureInPictureEnabled" in document &&
+        document.pictureInPictureEnabled &&
+        Boolean(video && typeof video.requestPictureInPicture === "function") &&
+        !video?.disablePictureInPicture,
+    );
+    return () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    };
+  }, []);
+
+  // Track PiP state from the element events (covers the floating window's own X button).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onEnter = () => setPipActive(true);
+    const onLeave = () => setPipActive(false);
+    video.addEventListener("enterpictureinpicture", onEnter);
+    video.addEventListener("leavepictureinpicture", onLeave);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnter);
+      video.removeEventListener("leavepictureinpicture", onLeave);
+    };
+  }, []);
+
+  const togglePip = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        return;
+      }
+      if (video.readyState < 1) {
+        showNotice("Video chưa tải xong — thử lại sau giây lát.");
+        return;
+      }
+      await video.requestPictureInPicture();
+    } catch (err) {
+      console.error("Picture-in-Picture failed:", err);
+      showNotice("Trình duyệt đang chặn Thu nhỏ cửa sổ (PiP) — kiểm tra cài đặt site permissions.");
+    }
+  }, [showNotice]);
 
   /** Resolve the stream (optionally at a specific resolution) and attach it. */
   const attachSource = useCallback(
@@ -405,6 +463,13 @@ export function VideoPlayer({
         </button>
       )}
 
+      {/* Transient notice toast */}
+      {notice && (
+        <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/85 px-4 py-2 text-sm text-white shadow-lg backdrop-blur-md">
+          {notice}
+        </div>
+      )}
+
       {/* Top title bar */}
       <div
         className={cn(
@@ -593,18 +658,14 @@ export function VideoPlayer({
               )}
             </div>
 
-            <ControlButton
-              label="Thu nhỏ trong cửa sổ"
-              onClick={() => {
-                const video = videoRef.current;
-                if (video && document.pictureInPictureEnabled) {
-                  if (document.pictureInPictureElement) document.exitPictureInPicture();
-                  else video.requestPictureInPicture().catch(() => undefined);
-                }
-              }}
-            >
-              <PictureInPicture2 className="size-4.5" />
-            </ControlButton>
+            {pipSupported && (
+              <ControlButton
+                label={pipActive ? "Thoát thu nhỏ cửa sổ" : "Thu nhỏ trong cửa sổ"}
+                onClick={togglePip}
+              >
+                <PictureInPicture2 className={cn("size-4.5", pipActive && "text-neon")} />
+              </ControlButton>
+            )}
             <ControlButton
               label={fullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
               onClick={toggleFullscreen}
