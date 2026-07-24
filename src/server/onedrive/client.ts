@@ -49,7 +49,8 @@ async function fetchAccessToken(): Promise<string> {
       client_id: clientId,
       grant_type: "refresh_token",
       refresh_token: process.env.MS_REFRESH_TOKEN,
-      scope: "Files.Read.All offline_access",
+      // ReadWrite so the `npm run encode` pipeline can upload renditions.
+      scope: "Files.ReadWrite.All offline_access",
     });
     if (process.env.MS_CLIENT_SECRET) body.set("client_secret", process.env.MS_CLIENT_SECRET);
   } else {
@@ -91,7 +92,8 @@ export async function getAccessToken(): Promise<string> {
   return fetchAccessToken();
 }
 
-function driveBase(): string {
+/** Graph URL prefix of the configured drive (business drive or personal /me/drive). */
+export function driveBase(): string {
   if (process.env.ONEDRIVE_DRIVE_ID) return `${GRAPH_BASE}/drives/${process.env.ONEDRIVE_DRIVE_ID}`;
   return `${GRAPH_BASE}/me/drive`;
 }

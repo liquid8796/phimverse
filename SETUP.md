@@ -87,18 +87,18 @@ File phim nằm trên OneDrive của bạn. App resolve file → lấy `@microso
 
 ### 4b. Chế độ A — OneDrive cá nhân (refresh token)
 
-1. **API permissions** → Add → Microsoft Graph → **Delegated** → `Files.Read.All`, `offline_access`.
+1. **API permissions** → Add → Microsoft Graph → **Delegated** → `Files.ReadWrite.All`, `offline_access`.
 2. Mở URL sau trên trình duyệt (thay CLIENT_ID):
 
 ```text
-https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id=CLIENT_ID&response_type=code&redirect_uri=http://localhost:5555/callback&scope=Files.Read.All%20offline_access
+https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id=CLIENT_ID&response_type=code&redirect_uri=http://localhost:5555/callback&scope=Files.ReadWrite.All%20offline_access
 ```
 
 3. Đăng nhập tài khoản Microsoft chứa phim → sau khi redirect, copy tham số `code=...` trên thanh địa chỉ.
 4. Đổi code lấy refresh token:
 
 ```bash
-curl -X POST https://login.microsoftonline.com/consumers/oauth2/v2.0/token -d "client_id=CLIENT_ID&client_secret=CLIENT_SECRET&grant_type=authorization_code&code=CODE&redirect_uri=http://localhost:5555/callback&scope=Files.Read.All offline_access"
+curl -X POST https://login.microsoftonline.com/consumers/oauth2/v2.0/token -d "client_id=CLIENT_ID&client_secret=CLIENT_SECRET&grant_type=authorization_code&code=CODE&redirect_uri=http://localhost:5555/callback&scope=Files.ReadWrite.All offline_access"
 ```
 
 5. Lưu `refresh_token` trong response → `MS_REFRESH_TOKEN`.
@@ -107,7 +107,7 @@ Env cần đặt: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_REFRESH_TOKEN`.
 
 ### 4c. Chế độ B — OneDrive for Business (app-only)
 
-1. **API permissions** → Add → Microsoft Graph → **Application** → `Files.Read.All` → bấm **Grant admin consent**.
+1. **API permissions** → Add → Microsoft Graph → **Application** → `Files.ReadWrite.All` → bấm **Grant admin consent**.
 2. Lấy **Directory (tenant) ID** → `MS_TENANT_ID`.
 3. Lấy access token tạm (hạn ~1 giờ, chỉ cần cho bước 4 — khi chạy thật app tự xin
    token bằng đúng flow này, xem `src/server/onedrive/client.ts`):
@@ -137,25 +137,43 @@ curl -X POST "https://login.microsoftonline.com/MS_TENANT_ID/oauth2/v2.0/token" 
 
 Env cần đặt: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`, `ONEDRIVE_DRIVE_ID`.
 
-### 4d. Gắn file phim vào episode (đa độ phân giải)
+### 4d. Gắn phim vào tập — chỉ cần 1 file
 
-Mỗi tập phim có thể có nhiều biến thể độ phân giải (4K / 1080p / 720p / 360p) — người xem
-chọn chất lượng ngay trong trình phát. Upload từng bản encode lên OneDrive, ví dụ:
+Bạn **không cần upload từng bản encode**. Quy trình chuẩn cho mỗi tập:
 
-```text
-Movies/silo/2160p/e01.mp4
-Movies/silo/1080p/e01.mp4
-Movies/silo/720p/e01.mp4
+1. Tạo phim trong `/admin` (các tập có thể để trống nguồn).
+2. Chạy pipeline encode với **một file gốc duy nhất**:
+
+```bash
+# File gốc đang ở máy bạn:
+npm run encode -- --slug silo --ep 1 --input "D:\phim\silo-e01.mkv"
 ```
 
-Cách gắn dễ nhất: vào **trang quản trị** (`/admin` → Sửa phim) — mỗi tập có danh sách
-độ phân giải, điền `OneDrive path` cho từng bản. Hoặc sửa trực tiếp bảng
-`episode_sources` (`npm run db:studio`): mỗi dòng = 1 độ phân giải của 1 tập với
-`resolution`, `onedrive_path`, `fallback_url`. Có `onedrive_path` là app tự ưu tiên
-OneDrive; nếu lỗi sẽ fallback về `fallback_url`, và nếu thiếu độ phân giải được yêu cầu
-thì tự phát bản tốt nhất còn lại.
+```bash
+# Hoặc file gốc đã upload sẵn lên OneDrive (bản gốc được dùng luôn, không upload lại):
+npm run encode -- --slug silo --ep 1 --from-onedrive "Movies/silo/e01.mp4"
+```
 
-> **Khuyến nghị 4K**: dùng MP4 (H.264/H.265) có **moov atom ở đầu file** (faststart) để tua nhanh không phải tải đuôi file. Encode: `ffmpeg -i in.mkv -c copy -movflags +faststart out.mp4`.
+Script sẽ tự động:
+- đọc độ phân giải gốc và **không bao giờ upscale** (nguồn 1080p → chỉ tạo 720p, 360p);
+- remux bản gốc sang MP4 `+faststart` (không mất chất lượng, tua 4K tức thì);
+- encode các bản thấp hơn bằng ffmpeg (H.264, CRF 22);
+- upload tất cả lên OneDrive theo cấu trúc `Movies/<slug>/<độ-phân-giải>/s1e1.mp4`;
+- ghi toàn bộ vào bảng `episode_sources` — menu chất lượng trong player hiện ngay.
+
+Tùy chọn: `--season 2`, `--dest "Phim/khac"`, `--resolutions 720p,360p`, `--crf 20`.
+
+**Yêu cầu**: `ffmpeg` trên máy (`winget install Gyan.FFmpeg`, mở terminal mới sau khi
+cài) và quyền Graph **`Files.ReadWrite.All`** (đã ghi ở mục 4b/4c) để script upload được.
+
+> Vì sao không encode trên web: encode phim cần hàng giờ CPU + toàn bộ file trên đĩa —
+> vượt xa giới hạn serverless, và vi phạm nguyên tắc "byte video không đi qua server".
+> Encode chạy 1 lần ở máy bạn; web chỉ phát file tĩnh từ CDN OneDrive.
+
+Cách thủ công (tùy chọn): tự upload từng bản encode rồi điền từng `OneDrive path`
+trong `/admin` → Sửa phim, hoặc sửa bảng `episode_sources` qua `npm run db:studio`.
+App luôn ưu tiên `onedrive_path`, lỗi thì fallback `fallback_url`; thiếu độ phân giải
+được yêu cầu thì tự phát bản tốt nhất còn lại.
 
 ### Đặt env trên Vercel
 

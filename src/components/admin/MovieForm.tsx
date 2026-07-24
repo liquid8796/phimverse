@@ -88,9 +88,7 @@ export function MovieForm({ initial }: MovieFormProps) {
   const removeSource = (epIndex: number, srcIndex: number) => {
     setEpisodes((prev) =>
       prev.map((ep, i) =>
-        i === epIndex && ep.sources.length > 1
-          ? { ...ep, sources: ep.sources.filter((_, j) => j !== srcIndex) }
-          : ep,
+        i === epIndex ? { ...ep, sources: ep.sources.filter((_, j) => j !== srcIndex) } : ep,
       ),
     );
   };
@@ -417,9 +415,8 @@ export function MovieForm({ initial }: MovieFormProps) {
                       <button
                         type="button"
                         onClick={() => removeSource(epIndex, srcIndex)}
-                        disabled={ep.sources.length <= 1}
                         aria-label="Xóa độ phân giải này"
-                        className="grid size-10 place-items-center rounded-lg border border-line text-dim transition-colors hover:border-neon/60 hover:text-neon disabled:opacity-40"
+                        className="grid size-10 place-items-center rounded-lg border border-line text-dim transition-colors hover:border-neon/60 hover:text-neon"
                       >
                         <Trash2 className="size-4" />
                       </button>
@@ -439,10 +436,12 @@ export function MovieForm({ initial }: MovieFormProps) {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs text-dim">
-          Mỗi tập có thể có nhiều độ phân giải (4K / 1080p / 720p / 360p) — người xem chọn trong
-          trình phát. Mỗi độ phân giải cần <span className="text-ink">OneDrive path</span> (ưu
-          tiên) hoặc <span className="text-ink">URL dự phòng</span>.
+        <p className="mt-3 text-xs leading-relaxed text-dim">
+          <span className="font-semibold text-gold">Chỉ cần 1 file:</span> điền một nguồn duy nhất
+          (bản gốc) là phát được — hoặc để trống rồi chạy{" "}
+          <code className="rounded bg-night-800 px-1.5 py-0.5">npm run encode</code> ở máy để tự
+          encode + upload các độ phân giải thấp hơn lên OneDrive và tự điền vào đây. Dòng nào bỏ
+          trống cả hai ô nguồn sẽ được bỏ qua khi lưu.
         </p>
       </section>
 

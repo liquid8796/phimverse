@@ -59,6 +59,7 @@ giữa chừng sẽ được player tự resolve lại và tua về đúng vị 
 | `npm run db:push` | Tạo bảng Postgres từ schema (drizzle-kit) |
 | `npm run db:seed` | Seed catalog + tài khoản demo (tự upload ảnh lên Blob nếu có token) |
 | `npm run db:studio` | Drizzle Studio — xem/sửa dữ liệu |
+| `npm run encode` | Từ 1 file gốc: tự encode 1080p/720p/360p (ffmpeg), upload OneDrive, ghi DB |
 
 ## Tính năng
 

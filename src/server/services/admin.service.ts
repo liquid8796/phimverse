@@ -58,11 +58,13 @@ function validate(input: AdminMovieInput): AdminMovieInput {
     if (seen.has(key)) throw new AdminServiceError(`Tập ${number} bị trùng số tập.`);
     seen.add(key);
 
-    if (!ep.sources || ep.sources.length === 0) {
-      throw new AdminServiceError(`Tập ${number}: cần ít nhất một độ phân giải.`);
-    }
+    // Rows with neither a OneDrive path nor a URL are simply dropped: an
+    // episode may be saved source-less and filled later by `npm run encode`.
+    const filledSources = (ep.sources ?? []).filter(
+      (source) => source.oneDrivePath?.trim() || source.fallbackUrl?.trim(),
+    );
     const seenResolutions = new Set<string>();
-    const sources = ep.sources.map((source): AdminSourceInput => {
+    const sources = filledSources.map((source): AdminSourceInput => {
       if (!isResolution(source.resolution)) {
         throw new AdminServiceError(`Tập ${number}: độ phân giải không hợp lệ.`);
       }
@@ -72,11 +74,6 @@ function validate(input: AdminMovieInput): AdminMovieInput {
         );
       }
       seenResolutions.add(source.resolution);
-      if (!source.oneDrivePath?.trim() && !source.fallbackUrl?.trim()) {
-        throw new AdminServiceError(
-          `Tập ${number} (${resolutionLabel(source.resolution)}): cần điền OneDrive path hoặc URL dự phòng để phát được.`,
-        );
-      }
       return {
         resolution: source.resolution,
         sourceType: source.sourceType === "hls" ? "hls" : "mp4",
