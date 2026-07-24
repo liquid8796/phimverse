@@ -8,7 +8,7 @@
  *
  * Run: npm run db:seed
  */
-import "dotenv/config";
+import { config } from "dotenv";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
@@ -19,6 +19,9 @@ import { put } from "@vercel/blob";
 import { CATALOG } from "../src/data/catalog";
 import { GENRES } from "../src/lib/constants";
 import * as schema from "../src/server/db/schema";
+
+// Load env files the way Next.js does in dev — most specific first wins.
+config({ path: [".env.development.local", ".env.local", ".env"], quiet: true });
 
 async function maybeUploadToBlob(kind: "posters" | "backdrops", slug: string): Promise<string> {
   const localPath = `/${kind}/${slug}.jpg`;
