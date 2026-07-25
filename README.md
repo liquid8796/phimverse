@@ -1,77 +1,118 @@
 # PhimVerse 🎬
 
-Website xem phim trực tuyến chất lượng 4K, lấy cảm hứng thiết kế từ PhimFox.
-Next.js 16 (App Router) · Vercel Blob · Neon Postgres · Upstash Redis · streaming từ OneDrive.
+A 4K-capable movie streaming site with a Vietnamese UI, design-inspired by PhimFox.
+Next.js 16 (App Router) · Vercel Blob · Neon Postgres · Upstash Redis · OneDrive streaming.
 
-## Chạy thử ngay (demo mode — không cần cấu hình)
+> The user-facing interface is in Vietnamese by design. Code, comments and docs are English.
+
+## Quick start (demo mode — no configuration needed)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Mở http://localhost:3000 — app tự chạy với catalog 21 phim trong bộ nhớ và video mẫu.
-Tài khoản demo: `demo@phimverse.dev` / `demo1234`.
+Open http://localhost:3000. With no environment variables set, the app boots against an
+in-memory catalog of 21 movies playing public sample videos, so nothing has to be
+provisioned first. Demo account: `demo@phimverse.dev` / `demo1234` (also the admin
+account in demo mode).
 
-Cấu hình hạ tầng thật (Vercel + OneDrive): xem **[SETUP.md](SETUP.md)**.
+To wire up real infrastructure (Vercel storage + OneDrive), see **[SETUP.md](SETUP.md)**.
 
-## Kiến trúc
+## Architecture
 
 ```text
 src/
 ├── app/                  # Routes (App Router) + API routes
-├── components/           # UI components (layout, movies, player, ...)
-├── data/catalog.ts       # Nguồn dữ liệu demo duy nhất (memory repo + seed + posters)
-├── lib/                  # Hằng số, helpers dùng chung client/server
+├── components/           # UI components (layout, movies, player, admin, ...)
+├── data/catalog.ts       # Single source of demo data (memory repo + seed + posters)
+├── lib/                  # Constants and helpers shared by client and server
 ├── server/
 │   ├── db/               # Drizzle schema + Neon client
-│   ├── cache/            # Redis (Upstash) + fallback in-memory, read-through cache
-│   ├── onedrive/         # Microsoft Graph client (token + downloadUrl)
+│   ├── cache/            # Upstash Redis with in-memory fallback, read-through cache
+│   ├── onedrive/         # Microsoft Graph client (tokens + downloadUrl)
 │   ├── storage/          # Vercel Blob wrapper
-│   ├── repositories/     # Repository pattern: interface + Drizzle impl + Memory impl
-│   ├── services/         # Business logic (movie, stream, trending, user)
-│   └── actions/          # Server Actions (auth, profile, collection)
-└── types/                # Domain types dùng chung
+│   ├── repositories/     # Repository pattern: interfaces + Drizzle impl + memory impl
+│   ├── services/         # Business logic (movie, stream, trending, user, admin)
+│   └── actions/          # Server Actions (auth, profile, collection, admin)
+└── types/                # Shared domain types
 ```
 
-**Design patterns chính**
+**Key design decisions**
 
-- **Repository pattern** — service layer chỉ phụ thuộc interface trong
-  `repositories/types.ts`; factory tự chọn Postgres hay in-memory theo env.
-  Thêm backend mới = implement interface, không sửa business logic.
-- **Service layer** — caching policy, validation, nghiệp vụ nằm ở
-  `server/services/*`, tách khỏi cả UI lẫn data access.
-- **Read-through cache** — helper `cached()` bọc mọi truy vấn nóng bằng Redis.
-- **Adapter cho hạ tầng** — Blob/OneDrive/Redis đều là module mỏng, dễ thay thế.
+- **Repository pattern** — the service layer depends only on the interfaces in
+  `repositories/types.ts`; the factory in `repositories/index.ts` picks the Postgres or
+  in-memory implementation based on `DATABASE_URL`. Adding a data backend means
+  implementing the interfaces, not touching business logic.
+- **Service layer** — caching policy, validation and domain rules live in
+  `server/services/*`, isolated from both UI and data access.
+- **Read-through cache** — the `cached()` helper wraps every hot query in Redis. Cache
+  keys embed a catalog version that admin mutations bump, invalidating derived keys at once.
+- **Infrastructure adapters** — Blob, OneDrive and Redis are thin, swappable modules that
+  degrade gracefully when unconfigured, so the app never crashes on missing env vars.
 
-**Vì sao 4K mượt**: player gọi `/api/stream/:id?format=json` một lần để lấy URL
-CDN (OneDrive `downloadUrl`, hỗ trợ HTTP Range, cache 45' trong Redis) rồi phát
-trực tiếp — byte video không bao giờ đi qua serverless function. URL hết hạn
-giữa chừng sẽ được player tự resolve lại và tua về đúng vị trí.
+**Why 4K playback stays smooth**: the player calls `/api/stream/:id?format=json` once to
+resolve a CDN URL (the OneDrive `downloadUrl`, which supports HTTP Range and is cached in
+Redis for 45 minutes), then plays it directly. Video bytes never pass through a serverless
+function — every seek and buffer request goes straight to Microsoft's CDN. If a
+pre-signed URL expires mid-playback, the player transparently re-resolves it and resumes
+at the same position.
 
 ## Scripts
 
-| Lệnh | Chức năng |
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` / `build` / `start` | Next.js |
-| `npm run lint` / `typecheck` | ESLint / tsc |
-| `npm run posters` | Sinh poster + backdrop demo vào `/public` |
-| `npm run db:push` | Tạo bảng Postgres từ schema (drizzle-kit) |
-| `npm run db:seed` | Seed catalog + tài khoản demo (tự upload ảnh lên Blob nếu có token) |
-| `npm run db:studio` | Drizzle Studio — xem/sửa dữ liệu |
-| `npm run encode` | Từ 1 file gốc: tự encode 1080p/720p/360p (ffmpeg), upload OneDrive, ghi DB |
+| `npm run dev` / `build` / `start` | Next.js dev server / production build / serve |
+| `npm run lint` / `typecheck` | ESLint / `tsc --noEmit` |
+| `npm run posters` | Generate demo poster + backdrop artwork into `/public` |
+| `npm run db:push` | Create Postgres tables from the schema (drizzle-kit) |
+| `npm run db:seed` | Seed the catalog + demo account (uploads artwork to Blob when a token is present) |
+| `npm run db:studio` | Drizzle Studio — inspect and edit data |
+| `npm run encode` | From one source file: encode 1080p/720p/360p with ffmpeg, upload to OneDrive, register in the DB |
 
-## Tính năng
+Run `npm run lint && npm run typecheck && npm run build` before committing.
 
-- Trang chủ: hero banner xoay vòng, bộ lọc (loại/thể loại/quốc gia/năm/thời lượng/sắp xếp), carousel Phim Đề Cử / Phim Lẻ Mới / Phim Bộ Mới / Xem Nhiều / Đánh Giá Cao
-- Trang chi tiết + danh sách tập, phim liên quan
-- Player tùy biến: chọn chất lượng 4K/1080p/720p/360p (giữ nguyên vị trí đang xem khi
-  đổi), tua nhanh, âm lượng, tốc độ phát, PiP, fullscreen, phím tắt, HLS (hls.js),
-  tự lưu & khôi phục tiến độ xem
-- Tìm kiếm live (debounce) + trang kết quả
-- Danh sách của tôi: Cập Nhật (đang xem dở kèm progress) / Đang Xem / Mong Muốn / Đã Xem
-- Tài khoản: đổi tên/email/mật khẩu, số dư, mã mời bạn bè
-- Trending theo tuần (Redis sorted set), đăng ký/đăng nhập (Auth.js v5)
-- Khu vực quản trị `/admin` (đăng nhập riêng tại `/admin/login`, quyền theo
-  `ADMIN_EMAILS`): thêm/sửa/xóa/tìm kiếm phim, quản lý tập + nguồn OneDrive,
-  tự vô hiệu cache sau mỗi thay đổi
+## Features
+
+- **Home** — rotating hero spotlight, filter bar (type / genre / country / year / duration /
+  sort) and carousels: Featured, Latest Movies, Latest Series, Most Watched, Top Rated.
+- **Browse** — dedicated movie, series, trending and search pages; all filters are
+  URL-driven, so results are shareable and back-button friendly.
+- **Detail page** — synopsis, metadata, episode grid and related titles.
+- **Custom player** — quality selector for 4K/1080p/720p/360p (switching keeps the current
+  position), seek, volume, playback speed, Picture-in-Picture, fullscreen, keyboard
+  shortcuts, HLS via hls.js, and automatic save/resume of watch progress.
+- **Live search** — debounced overlay with a full results page; `/` opens it anywhere.
+- **My list** — Updates (in-progress titles with a progress bar), Watching, Wishlist, Watched.
+- **Account** — change display name, email and password; balance and friend invite codes.
+- **Weekly trending** — view counters in Redis sorted sets, so ranking never hits Postgres.
+- **Auth** — credentials sign-up/sign-in with stateless JWT sessions (Auth.js v5).
+- **Admin area** — separate sign-in at `/admin/login`, authorized via `ADMIN_EMAILS`.
+  Create, edit, delete and search movies; manage episodes and their per-resolution
+  OneDrive sources; caches invalidate automatically after every change.
+
+## Adding a movie
+
+1. Create the movie in `/admin` (episodes may be saved without sources).
+2. Encode and publish each episode from a **single source file** — the pipeline probes the
+   resolution, remuxes the original losslessly with `+faststart`, encodes the lower rungs,
+   uploads everything to OneDrive and registers the sources:
+
+```bash
+npm run encode -- --slug silo --ep 1 --input "D:\movies\silo-e01.mkv"
+```
+
+Requires `ffmpeg` on `PATH` and the `Files.ReadWrite.All` Graph permission. Full options
+and the manual alternative are documented in [SETUP.md](SETUP.md) (section 4d).
+
+## Deployment
+
+Deployed on Vercel. Production: https://phimverse.vercel.app
+
+```bash
+vercel deploy --prod
+```
+
+Environment variables are listed in [.env.example](.env.example) and explained in
+[SETUP.md](SETUP.md). Every variable is optional in development — the app degrades to demo
+mode instead of failing.
